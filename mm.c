@@ -36,37 +36,72 @@ team_t team = {
 };
 
 /* single word (4) or double word (8) alignment */
-#define ALIGNMENT 8
-#define WSIZE 4
+#define ALIGNMENT 16
+#define WSIZE 8
+#define DSIZE 16
+#define CHUNKSIZE (1<<12)
 
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
-#define PACK(size, alloc) ((size) || (alloc))
+#define PACK(size, alloc) ((size) | (alloc))
 
 /* rounds up to the nearest multiple of ALIGNMENT */
-#define ALIGN(size) (((size) + (ALIGNMENT-1)) & ~0x7)
-
-
+#define ALIGN(size) (((size) + (ALIGNMENT-1)) & ~0xf)
 #define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
 
 #define GET(p) (*(unsigned *)(p))
 #define PUT(p, val) (*(unsigned *)(p) = (val))
 
+#define GET_SIZE(p) (GET(p) & ~0x7)
 #define GET_ALLOC(p) (GET(p) & 0x1)
 
-static char* heap_listp = 0;
+#define HDRP(bp) ((char *)(bp) - WSIZE)
+#define FTRP(bp) ((char *)(bp) + GET_SIZE(HDRP(bp)) - DSIZE)
+
+#define NEXT_BRKP (char *)(bp) + GET_SIZE(HDRP(bp))
+#define PREV_BRKP (char *)(bp) - GET_SIZE(HDRP(bp) - WSIZE)
+
+static char* heap_listp = NULL;
+static void* extend_heap(size_t words);
 
 /* 
  * mm_init - initialize the malloc package.
  */
 int mm_init(void)
 {
-    // if (heap_listp == sbrk(4 * WSIZE) == (void *) -1)
-    // {
-    //     return -1;
-    // }
-    // PUT(heap_listp, 0);
-    // return 0;
+    if ((heap_listp = mem_sbrk(4 * WSIZE)) == (void *)-1)
+        return -1;
+    
+    PUT(heap_listp, 0); // Alignment padding
+    PUT(heap_listp + (1 * WSIZE), PACK(DSIZE, 1)); // Prologue header (16 byte)
+    PUT(heap_listp + (2 * WSIZE), PACK(DSIZE, 1)); // Prologue footer (16 byte)
+    PUT(heap_listp + (3 * WSIZE), PACK(0, 1)); // Epilogue header
+    heap_listp += (2 * WSIZE);
+
+    if(extend_heap(CHUNKSIZE/WSIZE) == NULL)
+        return -1;
+    return 0;
 }
+
+/*
+ * extend_heap - Allocate a block by 
+ */
+
+static void *extend_heap(size_t words)
+{
+    char *bp;
+    size_t size;
+
+    size = (words % 2) ? (words + 1) * WSIZE : words * WSIZE;
+    if((long)(bp = mem_sbrk(size)) == -1)
+        return NULL;
+    
+    PUT(HDRP(bp), PACK(size, 0));
+    PUT(FTRP(bp), PACK(size, 0));
+    PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));
+
+    return coalesce(bp);
+}
+
 
 /* 
  * mm_malloc - Allocate a block by incrementing the brk pointer.
@@ -74,7 +109,7 @@ int mm_init(void)
  */
 void *mm_malloc(size_t size)
 {
-    int newsize = ALIGN(size + SIZE_T_SIZE);
+    size_t newsize = ALIGN(size + SIZE_T_SIZE);
     void *p = mem_sbrk(newsize);
     if (p == (void *)-1)
 	return NULL;

@@ -36,7 +36,7 @@ HANDINDIR = /afs/cs.cmu.edu/academic/class/15213-f01/malloclab/handin
 
 CC = gcc
 # CFLAGS = -Wall -O2
-CFLAGS = -Wall -O2 -pg
+CFLAGS = -Wall -O2 -pg -m64
 OBJDIR = .out
 
 OBJS = $(OBJDIR)/mdriver.o $(OBJDIR)/mm.o $(OBJDIR)/memlib.o \
