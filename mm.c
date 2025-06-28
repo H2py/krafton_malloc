@@ -37,6 +37,10 @@ team_t team = {
 
 /* single word (4) or double word (8) alignment */
 #define ALIGNMENT 8
+#define WSIZE 4
+
+#define MAX(x, y) ((x) > (y) ? (x) : (y))
+#define PACK(size, alloc) ((size) || (alloc))
 
 /* rounds up to the nearest multiple of ALIGNMENT */
 #define ALIGN(size) (((size) + (ALIGNMENT-1)) & ~0x7)
@@ -44,12 +48,24 @@ team_t team = {
 
 #define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
 
+#define GET(p) (*(unsigned *)(p))
+#define PUT(p, val) (*(unsigned *)(p) = (val))
+
+#define GET_ALLOC(p) (GET(p) & 0x1)
+
+static char* heap_listp = 0;
+
 /* 
  * mm_init - initialize the malloc package.
  */
 int mm_init(void)
 {
-    return 0;
+    // if (heap_listp == sbrk(4 * WSIZE) == (void *) -1)
+    // {
+    //     return -1;
+    // }
+    // PUT(heap_listp, 0);
+    // return 0;
 }
 
 /* 
