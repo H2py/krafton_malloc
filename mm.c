@@ -62,12 +62,13 @@ team_t team = {
 
 static char* heap_listp = NULL;
 
-static void* extend_heap(size_t words);
+static void *extend_heap(size_t words);
 static void place(void *bp, size_t asize);
 static void *find_fit(size_t asize);
-static void *coalsesce(void* bp);
+static void *coalesce(void* bp);
 static void printblock(void *bp);
 static void checkblock(void *bp);
+
 /* 
  * mm_init - initialize the malloc package.
  */
@@ -103,7 +104,7 @@ static void *extend_heap(size_t words)
     if((size_t)(bp = mem_sbrk(size)) == -1)
         return NULL;
     
-    // bp를 -WSIZE만큼ㅁ 이동하면, epilogue block이 나오고, 이를 가용 가능(free)block으로 할당한다
+    // bp를 -WSIZE만큼 이동하면, epilogue block이 나오고, 이를 가용 가능(free)block으로 할당한다
     // FTRP(bp), PACK(size, 0)을 통해서, footer block 또한 생성한다
     PUT(HDRP(bp), PACK(size, 0));
     PUT(FTRP(bp), PACK(size, 0));
@@ -113,7 +114,7 @@ static void *extend_heap(size_t words)
 }
 
 
-static void *coalsesce(void *bp)
+static void *coalesce(void *bp)
 {
     size_t PREV_ALLOC = GET_ALLOC(HDRP(PREV_BLKP(bp)));
     size_t NEXT_ALLOC = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
@@ -172,8 +173,8 @@ void mm_free(void *bp)
 {
     size_t size = GET_SIZE(HDRP(bp));
     PUT(HDRP(bp), PACK(size, 0));
-    PUT(FTPR(bp), PACK(size, 0));
-    coalsesce(bp);
+    PUT(FTRP(bp), PACK(size, 0));
+    coalesce(bp);
 }
 
 /*
