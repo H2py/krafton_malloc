@@ -43,9 +43,9 @@ CC = gcc
 # 제출 전에는 -DDBUG -pg -ggdb3 빼고, -O2 넣으면 된다
 
 # for debugging
-DEBUG_FLAGS = -Wall -Wextra -ggdb3 -pg -g -m64 -std=gnu99 -DDBUG -DDRIVER
+DEBUG_FLAGS = -Wall -Wextra -ggdb3 -pg -g -m32 -std=gnu99 -DDBUG -DDRIVER
 # for release (제출용)
-RELEASE_FLAGS = -Wall -O2 -m64 -std=gnu99 -DDRIVER
+RELEASE_FLAGS = -Wall -O2 -m32 -std=gnu99 -DDRIVER
 
 CFLAGS = $(DEBUG_FLAGS)
 # or

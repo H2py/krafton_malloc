@@ -211,6 +211,35 @@ void mm_free(void *bp)
 }
 
 /*
+ * find_fit - function for the simple allocator described in Section 9.9.12
+ * My solution should perform a first-fit search of the impliticit free list
+ */
+
+static void *find_fit(size_t asize)
+{
+    char* bp;
+
+    for(bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
+    {
+        if(!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
+            return bp;
+    }
+    return NULL;
+}
+
+
+/*
+ * place - My function should place the reqeusted block at the beginning of the free block,
+ * splitting only if the size of the remainder would equal or exceed the minimum block size
+ */
+
+static void place(void *bp, size_t asize)
+{
+    size_t csize = GET_SIZE(HDRP(bp));    
+}
+
+
+/*
  * mm_realloc - Implemented simply in terms of mm_malloc and mm_free
  */
 void *mm_realloc(void *ptr, size_t size)
