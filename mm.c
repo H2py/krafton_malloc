@@ -36,22 +36,22 @@ team_t team = {
 };
 
 /* single word (4) or double word (8) alignment */
-#define ALIGNMENT 16
-#define WSIZE 8
-#define DSIZE 16
+#define ALIGNMENT 8
+#define WSIZE 4
+#define DSIZE 8
 #define CHUNKSIZE (1<<12)
 
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
 #define PACK(size, alloc) ((size) | (alloc))
 
 /* rounds up to the nearest multiple of ALIGNMENT */
-#define ALIGN(size) (((size) + (ALIGNMENT-1)) & ~0xf)
+#define ALIGN(size) (((size) + (ALIGNMENT-1)) & ~0x7)
 #define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
 
-#define GET(p) (*(unsigned *)(p))
-#define PUT(p, val) (*(unsigned *)(p) = (val))
+#define GET(p) (*(size_t *)(p))
+#define PUT(p, val) (*(size_t *)(p) = (val))
 
-#define GET_SIZE(p) (GET(p) & ~0xf)
+#define GET_SIZE(p) (GET(p) & ~0x7)
 #define GET_ALLOC(p) (GET(p) & 0x1)
 
 #define HDRP(bp) ((char *)(bp) - WSIZE)
@@ -61,8 +61,13 @@ team_t team = {
 #define PREV_BLKP(bp) ((char *)(bp) - GET_SIZE((char *)(bp) - DSIZE))
 
 static char* heap_listp = NULL;
-static void* extend_heap(size_t words);
 
+static void* extend_heap(size_t words);
+static void place(void *bp, size_t asize);
+static void *find_fit(size_t asize);
+static void *coalsesce(void* bp);
+static void printblock(void *bp);
+static void checkblock(void *bp);
 /* 
  * mm_init - initialize the malloc package.
  */
@@ -71,19 +76,20 @@ int mm_init(void)
     if ((heap_listp = mem_sbrk(4 * WSIZE)) == (void *)-1)
         return -1;
     
-    PUT(heap_listp, 0); // Alignment padding
+    PUT(heap_listp, 0); // Alignment padding -> Unused Block
     PUT(heap_listp + (1 * WSIZE), PACK(DSIZE, 1)); // Prologue header (16 byte)
     PUT(heap_listp + (2 * WSIZE), PACK(DSIZE, 1)); // Prologue footer (16 byte)
     PUT(heap_listp + (3 * WSIZE), PACK(0, 1)); // Epilogue header
-    heap_listp += (2 * WSIZE);
+    heap_listp += DSIZE;
 
     if(extend_heap(CHUNKSIZE/WSIZE) == NULL)
         return -1;
     return 0;
 }
+// end mminit
 
 /*
- * extend_heap - Allocate a block by 
+ * extend_heap - Allocate a block when there's no free block then invoke extend heap
  */
 
 static void *extend_heap(size_t words)
@@ -91,15 +97,54 @@ static void *extend_heap(size_t words)
     char *bp;
     size_t size;
 
+    // size는 총 할당 free block을 의미한다
+    // bp = 이전 brk를 가리키고 있다
     size = (words % 2) ? (words + 1) * WSIZE : words * WSIZE;
-    if((long)(bp = mem_sbrk(size)) == -1)
+    if((size_t)(bp = mem_sbrk(size)) == -1)
         return NULL;
     
+    // bp를 -WSIZE만큼ㅁ 이동하면, epilogue block이 나오고, 이를 가용 가능(free)block으로 할당한다
+    // FTRP(bp), PACK(size, 0)을 통해서, footer block 또한 생성한다
     PUT(HDRP(bp), PACK(size, 0));
     PUT(FTRP(bp), PACK(size, 0));
     PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));
 
     return coalesce(bp);
+}
+
+
+static void *coalsesce(void *bp)
+{
+    size_t PREV_ALLOC = GET_ALLOC(HDRP(PREV_BLKP(bp)));
+    size_t NEXT_ALLOC = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
+    size_t size = GET_SIZE(HDRP(bp));
+
+    char *prev_bp = PREV_BLKP(bp);
+    char *next_bp = NEXT_BLKP(bp);
+
+    if(PREV_ALLOC && NEXT_ALLOC)
+        return bp;
+    else if (!PREV_ALLOC && NEXT_ALLOC)
+    {
+        size += GET_SIZE(HDRP(prev_bp));
+        PUT(FTRP(bp), PACK(size, 0));
+        PUT(HDRP(prev_bp), PACK(size, 0));
+        bp = prev_bp;
+    }
+    else if (PREV_ALLOC && !NEXT_ALLOC)
+    {
+        size += GET_SIZE(HDRP(next_bp));
+        PUT(HDRP(bp), PACK(size, 0));
+        PUT(FTRP(next_bp), PACK(size, 0));
+    }
+    else
+    {
+        size += GET_SIZE(HDRP(prev_bp)) + GET_SIZE(HDRP(next_bp));
+        PUT(FTRP(next_bp), PACK(size, 0));
+        PUT(HDRP(prev_bp), PACK(size, 0));
+        bp = prev_bp;
+    }
+    return bp;
 }
 
 
@@ -111,8 +156,9 @@ void *mm_malloc(size_t size)
 {
     size_t newsize = ALIGN(size + SIZE_T_SIZE);
     void *p = mem_sbrk(newsize);
+
     if (p == (void *)-1)
-	return NULL;
+	    return NULL;
     else {
         *(size_t *)p = size;
         return (void *)((char *)p + SIZE_T_SIZE);
@@ -122,8 +168,12 @@ void *mm_malloc(size_t size)
 /*
  * mm_free - Freeing a block does nothing.
  */
-void mm_free(void *ptr)
+void mm_free(void *bp)
 {
+    size_t size = GET_SIZE(HDRP(bp));
+    PUT(HDRP(bp), PACK(size, 0));
+    PUT(FTPR(bp), PACK(size, 0));
+    coalsesce(bp);
 }
 
 /*
@@ -146,6 +196,63 @@ void *mm_realloc(void *ptr, size_t size)
     return newptr;
 }
 
+/*
+ * mm_checkheap - Check the heap for consistency
+ */
+
+void mm_checkheap(int verbose)
+{
+    char *bp = heap_listp;
+
+    if(verbose)
+        printf("Heap: %p\n", heap_listp);
+    
+    if((GET_SIZE(HDRP(bp))) != DSIZE || !GET_ALLOC(HDRP(bp)))
+        printf("Bad prologue header\n");
+    checkblock(bp);
+
+    for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp=NEXT_BLKP(bp))
+    {
+        if(verbose)
+            printblock(bp);
+        checkblock(bp);
+    }
+    
+    if(verbose)
+        printblock(bp);
+    if((GET_SIZE(HDRP(bp)) != 0 || !GET_ALLOC(HDRP(bp))))
+        printf("Bad epilogue header\n");
+}
+
+static void printblock(void *bp)
+{
+    size_t hsize, halloc, fsize, falloc;
+
+    hsize = GET_SIZE(HDRP(bp));
+    halloc = GET_ALLOC(HDRP(bp));
+    fsize = GET_SIZE(FTRP(bp));
+    falloc = GET_ALLOC(FTRP(bp));
+
+    if (hsize == 0) {
+        printf("%p : EOL\n", bp);
+        return;
+    }
+
+    printf("%p : header : [%d:%c] footer : [%d:%c]\n", bp, hsize, (halloc ? 'a' : 'f'), fsize, (falloc ? 'a' : 'f'));
+}
+
+static void checkblock(void *bp)
+{
+    if((size_t)bp % 8)
+        printf("Error: %p is not doubleword aligned\n", bp);
+    else
+    {
+        if(GET(HDRP(bp)) != GET(FTRP(bp)))
+            printf("Error : header does not match with footer");
+        else
+            printf("Corrected Block is maded");
+    }
+}
 
 
 

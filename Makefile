@@ -35,8 +35,12 @@ VERSION = 1
 HANDINDIR = /afs/cs.cmu.edu/academic/class/15213-f01/malloclab/handin
 
 CC = gcc
-# CFLAGS = -Wall -O2
-CFLAGS = -Wall -O2 -pg -g -m64
+
+# -ggdb3 : GDB에서 매크로 함수 호출 및. 확인 가능
+# DDRIVER : #define DRIVER와 같은 효과, #ifdef DRIVER조건 만족시킴
+# -std=gnu99 : c99표준 + GNU 확장 기능을 사용하겠다는 의미 : inline 함수 사용 가능
+
+CFLAGS = -Wall -Wextra -ggdb3 -DDRIVER -pg -g -m64 -std=gnu99
 OBJDIR = .out
 
 OBJS = $(OBJDIR)/mdriver.o $(OBJDIR)/mm.o $(OBJDIR)/memlib.o \
