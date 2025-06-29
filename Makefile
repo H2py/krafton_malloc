@@ -39,8 +39,18 @@ CC = gcc
 # -ggdb3 : GDB에서 매크로 함수 호출 및. 확인 가능
 # DDRIVER : #define DRIVER와 같은 효과, #ifdef DRIVER조건 만족시킴
 # -std=gnu99 : c99표준 + GNU 확장 기능을 사용하겠다는 의미 : inline 함수 사용 가능
+# DDBUG : DEBUG가 정의되어, #ifdef DEBUG 블록이 포함된다, 제출 시에는 플래그만 제거하면 됨
+# 제출 전에는 -DDBUG -pg -ggdb3 빼고, -O2 넣으면 된다
 
-CFLAGS = -Wall -Wextra -ggdb3 -DDRIVER -pg -g -m64 -std=gnu99
+# for debugging
+DEBUG_FLAGS = -Wall -Wextra -ggdb3 -pg -g -m64 -std=gnu99 -DDBUG -DDRIVER
+# for release (제출용)
+RELEASE_FLAGS = -Wall -O2 -m64 -std=gnu99 -DDRIVER
+
+CFLAGS = $(DEBUG_FLAGS)
+# or
+# CFLAGS = $(RELEASE_FLAGS)
+
 OBJDIR = .out
 
 OBJS = $(OBJDIR)/mdriver.o $(OBJDIR)/mm.o $(OBJDIR)/memlib.o \
@@ -73,3 +83,11 @@ handin:
 clean:
 	rm -f mdriver
 	rm -rf $(OBJDIR)
+
+debug:
+	$(MAKE) clean
+	$(MAKE) CFLAGS="$(DEBUG_FLAGS)"
+
+release:
+	$(MAKE) clean
+	$(MAKE) CFLAGS="%(RELEASE_FLAGS)"

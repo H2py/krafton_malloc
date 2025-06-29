@@ -28,11 +28,15 @@ team_t team = {
     /* First member's full name */
     "TAEJU AHN",
     /* First member's email address */
-    "E cha is mine@naver.com",
+    "Echaismine@naver.com",
     /* Second member's full name (leave blank if none) */
-    "",
+    "WOOJIN SIN",
     /* Second member's email address (leave blank if none) */
-    ""
+    "idontknow@naver.com",
+    /* Third member's full name (leave blank if none) */
+    "SEOKPYO HONG",
+    /* Third member's email address (leave blank if none) */
+    "idontknow@naver.com",
 };
 
 /* single word (4) or double word (8) alignment */
@@ -66,6 +70,7 @@ static void *extend_heap(size_t words);
 static void place(void *bp, size_t asize);
 static void *find_fit(size_t asize);
 static void *coalesce(void* bp);
+static void mm_checkheap(int verbose);
 static void printblock(void *bp);
 static void checkblock(void *bp);
 
@@ -87,10 +92,10 @@ int mm_init(void)
         return -1;
     return 0;
 }
-// end mminit
 
 /*
- * extend_heap - Allocate a block when there's no free block then invoke extend heap
+ * extend_heap - Extends the heap with a new free block of at least 'words' words.
+ * Returns a pointer to the new block or NULL on failure.
  */
 
 static void *extend_heap(size_t words)
@@ -101,7 +106,7 @@ static void *extend_heap(size_t words)
     // size는 총 할당 free block을 의미한다
     // bp = 이전 brk를 가리키고 있다
     size = (words % 2) ? (words + 1) * WSIZE : words * WSIZE;
-    if((size_t)(bp = mem_sbrk(size)) == -1)
+    if((int)(bp = mem_sbrk(size)) == (void *)-1)
         return NULL;
     
     // bp를 -WSIZE만큼 이동하면, epilogue block이 나오고, 이를 가용 가능(free)block으로 할당한다
@@ -155,15 +160,43 @@ static void *coalesce(void *bp)
  */
 void *mm_malloc(size_t size)
 {
-    size_t newsize = ALIGN(size + SIZE_T_SIZE);
-    void *p = mem_sbrk(newsize);
+    size_t asize, extendsize;
+    char *bp;
 
-    if (p == (void *)-1)
-	    return NULL;
-    else {
-        *(size_t *)p = size;
-        return (void *)((char *)p + SIZE_T_SIZE);
+#ifdef DEBUG
+    mm_checkheap(1);
+#endif
+
+    if (size <= 0)
+        return NULL;
+    
+    if (size <= DSIZE)
+        asize = 2 * DSIZE;
+    else
+        asize = ALIGN(size + DSIZE);
+    
+    if ((bp = find_fit(asize)) != NULL) {
+        place(bp, asize);
+        return bp;
     }
+
+    extendsize = MAX(CHUNKSIZE, asize);
+    
+    if ((bp = extend_heap(extendsize/WSIZE)) == NULL)
+        return NULL;
+    place(bp, extendsize);
+    return bp;
+
+    // Original code but recently not used
+    // size_t newsize = ALIGN(size + SIZE_T_SIZE);
+    // void *p = mem_sbrk(newsize);
+
+    // if (p == (void *)-1)
+	//     return NULL;
+    // else {
+    //     *(size_t *)p = size;
+    //     return (void *)((char *)p + SIZE_T_SIZE);
+    // }
 }
 
 /*
@@ -201,7 +234,7 @@ void *mm_realloc(void *ptr, size_t size)
  * mm_checkheap - Check the heap for consistency
  */
 
-void mm_checkheap(int verbose)
+static void mm_checkheap(int verbose)
 {
     char *bp = heap_listp;
 
@@ -217,6 +250,9 @@ void mm_checkheap(int verbose)
         if(verbose)
             printblock(bp);
         checkblock(bp);
+
+        if(!GET_ALLOC(HDRP(bp)) && !GET_ALLOC(HDRP(NEXT_BLKP(bp))))
+            printf("ERROR: adjacent free blocks at %p\n", bp);
     }
     
     if(verbose)
@@ -239,31 +275,15 @@ static void printblock(void *bp)
         return;
     }
 
-    printf("%p : header : [%d:%c] footer : [%d:%c]\n", bp, hsize, (halloc ? 'a' : 'f'), fsize, (falloc ? 'a' : 'f'));
+    printf("%p : header : [%zu:%c] footer : [%zu:%c]\n", bp, hsize, (halloc ? 'a' : 'f'), fsize, (falloc ? 'a' : 'f'));
 }
 
-static void checkblock(void *bp)
-{
-    if((size_t)bp % 8)
+static void checkblock(void *bp) {
+    if ((size_t)bp % 8) {
         printf("Error: %p is not doubleword aligned\n", bp);
-    else
-    {
-        if(GET(HDRP(bp)) != GET(FTRP(bp)))
-            printf("Error : header does not match with footer");
-        else
-            printf("Corrected Block is maded");
+    } else if (GET(HDRP(bp)) != GET(FTRP(bp))) {
+        printf("Error: header does not match footer at %p\n", bp);
+    } else {
+        printf("Block is consistent at %p\n", bp);
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
