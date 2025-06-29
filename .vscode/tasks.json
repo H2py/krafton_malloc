@@ -2,17 +2,26 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Build mdriver",
+      "label": "Build mdriver (debug)",
       "type": "shell",
-      "command": "make",
-      "args": [],
+      "command": "make debug", // Makefile에 정의된 debug 타겟을 직접 호출
       "group": {
         "kind": "build",
         "isDefault": true
       },
       "problemMatcher": ["$gcc"],
       "options": {
-        "cwd": "${workspaceFolder}/malloc-lab"
+        "cwd": "${workspaceFolder}"
+      }
+    },
+    {
+      "label": "Build mdriver (release)",
+      "type": "shell",
+      "command": "make release", // Makefile에 정의된 release 타겟
+      "group": "build",
+      "problemMatcher": ["$gcc"],
+      "options": {
+        "cwd": "${workspaceFolder}"
       }
     }
   ]

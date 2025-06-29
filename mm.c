@@ -106,7 +106,7 @@ static void *extend_heap(size_t words)
     // size는 총 할당 free block을 의미한다
     // bp = 이전 brk를 가리키고 있다
     size = (words % 2) ? (words + 1) * WSIZE : words * WSIZE;
-    if((int)(bp = mem_sbrk(size)) == (void *)-1)
+    if((bp = mem_sbrk(size)) == (void *)-1)
         return NULL;
     
     // bp를 -WSIZE만큼 이동하면, epilogue block이 나오고, 이를 가용 가능(free)block으로 할당한다
@@ -231,32 +231,73 @@ static void *find_fit(size_t asize)
 /*
  * place - My function should place the reqeusted block at the beginning of the free block,
  * splitting only if the size of the remainder would equal or exceed the minimum block size
+ * 
+ * 요청된 블록을 가용 블록의 시작 부분에 배치해야 하며,
+ * 나머지 크기가 최소 블록 크기와 같거나 이를 초과할 경우에만 분할해야 한다.
  */
 
 static void place(void *bp, size_t asize)
 {
-    size_t csize = GET_SIZE(HDRP(bp));    
+    size_t fsize = GET_SIZE(HDRP(bp));
+
+    if((fsize - asize) >= (2 * DSIZE)) {
+        PUT(HDRP(bp), PACK(asize, 1));
+        PUT(FTRP(bp), PACK(asize, 1));
+        bp = NEXT_BLKP(bp);
+        PUT(HDRP(bp), PACK(fsize - asize, 0));
+        PUT(FTRP(bp), PACK(fsize - asize, 0));
+    } else {
+        PUT(HDRP(bp), PACK(fsize, 1));
+        PUT(FTRP(bp), PACK(fsize, 1));
+    }
 }
 
 
 /*
  * mm_realloc - Implemented simply in terms of mm_malloc and mm_free
  */
-void *mm_realloc(void *ptr, size_t size)
-{
-    void *oldptr = ptr;
-    void *newptr;
-    size_t copySize;
-    
-    newptr = mm_malloc(size);
+
+ void *mm_realloc(void *ptr, size_t size) {
+    if (ptr == NULL) {
+        return mm_malloc(size);
+    }
+    if (size == 0) {
+        mm_free(ptr);
+        return NULL;
+    }
+
+    size_t asize = ALIGN(size + DSIZE);
+    size_t oldsize = GET_SIZE(HDRP(ptr));
+    if (asize <= oldsize) { 
+        place(ptr, asize);
+        return ptr;
+    }
+
+    void *newptr = mm_malloc(size);
     if (newptr == NULL)
-      return NULL;
-    copySize = *(size_t *)((char *)oldptr - SIZE_T_SIZE);
-    if (size < copySize)
-      copySize = size;
-    memcpy(newptr, oldptr, copySize);
-    mm_free(oldptr);
+        return NULL;
+
+    size_t copysize = GET_SIZE(HDRP(ptr)) - DSIZE; // 페이로드 크기
+    if (size < copysize)
+        copysize = size;
+    memcpy(newptr, ptr, copysize);
+    mm_free(ptr);
     return newptr;
+
+    // Previous Code
+    // void *oldptr = ptr;
+    // void *newptr;
+    // size_t copySize;
+    
+    // newptr = mm_malloc(size);
+    // if (newptr == NULL)
+    //   return NULL;
+    // copySize = *(size_t *)((char *)oldptr - SIZE_T_SIZE);
+    // if (size < copySize)
+    //   copySize = size;
+    // memcpy(newptr, oldptr, copySize);
+    // mm_free(oldptr);
+    // return newptr;
 }
 
 /*
