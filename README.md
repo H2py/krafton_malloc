@@ -49,38 +49,3 @@ The -V option prints out helpful tracing and summary information.
 To get a list of the driver flags:
 
 	unix> mdriver -h
-
-
-1. Makefile 수정하기
-컴파일 옵션에 -pg 추가:
-
-make
-
-CFLAGS = -g -Wall -pg
-2. 컴파일 후 실행
-sh
-
-
-make clean
-make
-./mdriver
-실행이 끝나면 **gmon.out**라는 파일이 생성됨
-
-3. gprof로 결과 확인
-sh
-
-
-gprof ./mdriver > analysis.txt
-4. 결과 예시
-analysis.txt를 열면 다음과 같은 분석 정보가 나옴:
-
-sql
-
-Flat profile:
-
-Each sample counts as 0.01 seconds.
-  %   cumulative   self              self     total
- time   seconds   seconds    calls   s/call   s/call  name
- 30.0      0.30     0.30     12000     0.000    0.000  find_fit
- 25.0      0.55     0.25     12000     0.000    0.000  place
- 15.0      0.70     0.15     10000     0.000    0.000  coalesce
