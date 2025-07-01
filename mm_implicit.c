@@ -7,7 +7,6 @@
 #include <assert.h>
 #include <unistd.h>
 #include <string.h>
-#include <limits.h>
 
 #include "mm.h"
 #include "memlib.h"
@@ -34,7 +33,6 @@ team_t team = {
 #define CHUNKSIZE (1 << 12)
 
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
-#define MIN(x, y) ((x) < (y) ? (x) : (y))
 #define PACK(size, alloc) ((size) | (alloc))
 
 #define GET(p) (*(unsigned int *)(p)) 
@@ -143,7 +141,7 @@ static void *coalesce(void *bp)
         bp = PREV_BLKP(bp);
     }
 
-    // find_nextp = bp;
+    find_nextp = bp;
 
     return bp;
 }
@@ -209,45 +207,31 @@ static void *find_fit(size_t asize)
     //         return bp;
     // }
 
-    // // Next-fit
-    // char *bp;
-    // if(find_nextp == NULL)
-    // find_nextp = heap_listp;
+    void *bp;
+    if(find_nextp == NULL)
+        find_nextp = heap_listp;
     
-    // // 현재 위치부터 끝까지 탐색
-    // for (bp = find_nextp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
-    // {
-    //     if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
-    //     {
-    //         find_nextp = NEXT_BLKP(bp);  // 다음 탐색을 위해 업데이트
-    //         return bp;
-    //     }
-    // }
-    
-    // // 처음부터 시작점까지 탐색
-    // for (bp = heap_listp; bp < find_nextp; bp = NEXT_BLKP(bp))
-    // {
-    //     if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
-    //     {
-    //         find_nextp = NEXT_BLKP(bp);  // 다음 탐색을 위해 업데이트
-    //         return bp;
-    //     }
-    // }
-    
-
-    // Best-fit
-    char *bp, *min_bp = NULL;
-    size_t min_size = SIZE_MAX;
-
-    for(bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
+    // 현재 위치부터 끝까지 탐색
+    for (bp = find_nextp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
     {
-        if (GET_SIZE(HDRP(bp)) < min_size && !GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
+        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
         {
-            min_size = GET_SIZE(HDRP(bp));
-            min_bp = bp;
+            find_nextp = NEXT_BLKP(bp);  // 다음 탐색을 위해 업데이트
+            return bp;
         }
     }
-    return min_bp;
+    
+    // 처음부터 시작점까지 탐색
+    for (bp = heap_listp; bp < find_nextp; bp = NEXT_BLKP(bp))
+    {
+        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
+        {
+            find_nextp = NEXT_BLKP(bp);  // 다음 탐색을 위해 업데이트
+            return bp;
+        }
+    }
+    
+    return NULL;
 }
 
 /*
@@ -270,7 +254,7 @@ static void place(void *bp, size_t asize)
         PUT(HDRP(bp), PACK(fsize, 1));
         PUT(FTRP(bp), PACK(fsize, 1));
     }
-    // find_nextp = bp;
+    find_nextp = bp;
 }
 
 /*
