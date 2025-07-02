@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <unistd.h>
 #include <string.h>
+#include <limits.h>
 
 #include "mm.h"
 #include "memlib.h"
@@ -24,7 +25,7 @@ team_t team = {
     ""
 };
 
-
+// mm_free, coalesce, insert_node, remove_node
 #define ALIGNMENT 8
 #define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~0x7)
 #define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
@@ -33,6 +34,7 @@ team_t team = {
 #define CHUNKSIZE (1 << 12)
 
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
 #define PACK(size, alloc) ((size) | (alloc))
 
 #define GET(p) (*(unsigned int *)(p)) 
@@ -207,9 +209,10 @@ static void *find_fit(size_t asize)
     //         return bp;
     // }
 
-    void *bp;
+    // Next-fit
+    char *bp;
     if(find_nextp == NULL)
-        find_nextp = heap_listp;
+    find_nextp = heap_listp;
     
     // 현재 위치부터 끝까지 탐색
     for (bp = find_nextp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
@@ -231,7 +234,20 @@ static void *find_fit(size_t asize)
         }
     }
     
-    return NULL;
+
+    // // Best-fit
+    // char *bp, *min_bp = NULL;
+    // size_t min_size = SIZE_MAX;
+
+    // for(bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
+    // {
+    //     if (GET_SIZE(HDRP(bp)) < min_size && !GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
+    //     {
+    //         min_size = GET_SIZE(HDRP(bp));
+    //         min_bp = bp;
+    //     }
+    // }
+    // return min_bp;
 }
 
 /*
