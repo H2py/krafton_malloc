@@ -1,3 +1,7 @@
+/*
+ * 🚀 Implicit Free List (묵시적 가용 리스트)
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -12,7 +16,7 @@ team_t team = {
     /* Team name */
     "Jungle Team 10",
     /* First member's full name */
-    "TJ",
+    "TJ CONO",
     /* First member's email address */
     "my-email@gmail.com",
     /* Second member's full name (leave blank if none) */
@@ -22,64 +26,49 @@ team_t team = {
 };
 
 // mm_free, coalesce, insert_node, remove_node
-#define ALIGNMENT 16
-#define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~(ALIGNMENT - 1))
+#define ALIGNMENT 8
+#define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~0x7)
 #define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
-#define WSIZE 8
-#define DSIZE 16
+#define WSIZE 4
+#define DSIZE 8
 #define CHUNKSIZE (1 << 12)
 
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
 #define PACK(size, alloc) ((size) | (alloc))
 
-#define GET(p) (*(size_t *)(p)) 
-#define PUT(p, val) (*(size_t *)(p) = (val))
+#define GET(p) (*(unsigned int *)(p)) 
+#define PUT(p, val) (*(unsigned int *)(p) = (val))
 
-#define GET_SIZE(p) (GET(p) & ~(ALIGNMENT - 1))
+#define GET_SIZE(p) (GET(p) & ~0x7)
 #define GET_ALLOC(p) (GET(p) & 0x1)
 
-#define HDRP(bp) ((char *)(bp) - WSIZE)
+#define HDRP(bp) ((char *)(bp)-WSIZE)
 #define FTRP(bp) ((char *)(bp) + GET_SIZE(HDRP(bp)) - DSIZE)
-
-#define NEXT_BLKP(bp) ((char *)(bp) + GET_SIZE((char *)(bp) - WSIZE))
-#define PREV_BLKP(bp) ((char *)(bp) - GET_SIZE((char *)(bp) - DSIZE))
-
-#define SUCP(bp) ((char *)(bp) + WSIZE)
-#define PREP(bp) ((char *)(bp))
-
-#define PRED_FREEP(bp) ((char **)(PREP(bp)))
-#define SUCC_FREEP(bp) ((char **)(SUCP(bp)))
-
-#define GET_PRED(bp) (*(char **)(PREP(bp)))
-#define GET_SUCC(bp) (*(char **)(SUCP(bp)))
-
-#define SET_PRED(bp, ptr) (GET_PRED(bp) = (ptr))
-#define SET_SUCC(bp, ptr) (GET_SUCC(bp) = (ptr))
+#define NEXT_BLKP(bp) ((char *)(bp) + GET_SIZE(((char *)(bp)-WSIZE)))
+#define PREV_BLKP(bp) ((char *)(bp)-GET_SIZE((char *)(bp)-DSIZE))
 
 static char *heap_listp = NULL;
-static char *free_listp = NULL;
+static char *find_nextp = NULL;
 
 static void *extend_heap(size_t words);
 static void place(void *bp, size_t asize);
 static void *find_fit(size_t asize);
 static void *coalesce(void* bp);
-static void add_free_ptr(void *bp);
-static void remove_free_ptr(void *bp);
+
 /* 
  * mm_init - initialize the malloc package.
  */
 int mm_init(void)
 {
-    if ((heap_listp = mem_sbrk(2 * WSIZE)) == (void *)-1)
+    if ((heap_listp = mem_sbrk(4 * WSIZE)) == (void *)-1)
         return -1;
-
     PUT(heap_listp, 0); // Alignment padding -> Unused Block
     PUT(heap_listp + (1 * WSIZE), PACK(DSIZE, 1)); // Prologue header 
-    PUT(heap_listp + (2 * WSIZE), PACK(DSIZE, 1)); // Prologue footer
+    PUT(heap_listp + (2 * WSIZE), PACK(DSIZE, 1)); // Prologue footer 
     PUT(heap_listp + (3 * WSIZE), PACK(0, 1)); // Epilogue header
     
     heap_listp += (2 * WSIZE);
-    free_listp = NULL;
 
     if(extend_heap(CHUNKSIZE / WSIZE) == NULL)
         return -1;
@@ -88,52 +77,6 @@ int mm_init(void)
         return -1;
     return 0;
 }
-
-/*
- * add_free_ptr - If created new free block, then invoke add_free_ptr
- * Purpose : Add to free_ptr and change the relation between PRED and free_listp and SUCC
- */
-
-static void add_free_ptr(void *bp)
-{
-    SET_SUCC(bp, free_listp);
-    SET_PRED(bp, NULL);
-
-    if (free_listp != NULL)
-        SET_PRED(free_listp, bp);
-    free_listp = bp;
-}
-
-
-/*
- * remove_free_ptr -If allocate to the free blcok, then remove_free_ptr
- * Moderate the pointer relation between successor and predecessor
- */
-
-
-static void remove_free_ptr(void *bp)
-{
-    // Case 1: 유일한 노드
-    if (GET_PRED(bp) == NULL && GET_SUCC(bp) == NULL) {
-        free_listp = NULL;
-    }
-    // Case 2: 맨 앞 노드
-    else if (GET_PRED(bp) == NULL) {
-        free_listp = GET_SUCC(bp);
-        SET_PRED(free_listp, NULL);
-    }
-    // Case 3: 맨 끝 노드
-    else if (GET_SUCC(bp) == NULL) {
-        SET_SUCC(GET_PRED(bp), NULL);
-    }
-    // Case 4: 중간 노드
-    else {
-        SET_SUCC(GET_PRED(bp), GET_SUCC(bp));
-        SET_PRED(GET_SUCC(bp), GET_PRED(bp));
-    }
-}
-
-
 
 /*
  * extend_heap - Extends the heap with a new free block of at least 'words' words.
@@ -145,15 +88,17 @@ static void *extend_heap(size_t words)
     char *bp;
     size_t size;
 
+    // size는 총 할당 free block을 의미한다
+    // bp = 이전 brk를 가리키고 있다
     size = (words % 2) ? (words + 1) * WSIZE : words * WSIZE;
     if ((long)(bp = mem_sbrk(size)) == -1)
         return NULL;
     
+    // bp를 -WSIZE만큼 이동하면, epilogue block이 나오고, 이를 가용 가능(free)block으로 할당한다
+    // FTRP(bp), PACK(size, 0)을 통해서, footer block 또한 생성한다
     PUT(HDRP(bp), PACK(size, 0));
     PUT(FTRP(bp), PACK(size, 0));
     PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));
-
-    add_free_ptr(bp);
 
     return coalesce(bp);
 }
@@ -198,6 +143,8 @@ static void *coalesce(void *bp)
         bp = PREV_BLKP(bp);
     }
 
+    find_nextp = bp;
+
     return bp;
 }
 
@@ -226,6 +173,7 @@ void *mm_malloc(size_t size)
     }
 
     extendsize = MAX(CHUNKSIZE, asize);
+    
     if ((bp = extend_heap(extendsize/WSIZE)) == NULL)
         return NULL;
     
@@ -242,30 +190,64 @@ void mm_free(void *bp)
     size_t size = GET_SIZE(HDRP(bp));
     PUT(HDRP(bp), PACK(size, 0));
     PUT(FTRP(bp), PACK(size, 0));
-    remove_free_ptr(bp);
     coalesce(bp);
 }
 
 /*
- * find_fit - function for the simple allocator
- * My solution should perform a BEST-fit search of the explicit free list
+ * find_fit - function for the simple allocator described in Section 9.9.12
+ * My solution should perform a first-fit search of the impliticit free list
  */
 
 static void *find_fit(size_t asize)
 {
-    // Best-fit
-    char *bp, *min_bp = NULL;
-    size_t min_size = SIZE_MAX;
+    // /* First-fit search*/
+    // char* bp;
 
-    for(bp = free_listp; bp != NULL; bp = SUCC_FREEP(bp))
+    // for(bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
+    // {
+    //     if(!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
+    //         return bp;
+    // }
+
+    // Next-fit
+    char *bp;
+    if (find_nextp == NULL)
+        find_nextp = heap_listp;
+    
+    // 현재 위치부터 끝까지 탐색
+    for (bp = find_nextp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
     {
-        if (GET_SIZE(HDRP(bp)) < min_size && !GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
+        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
         {
-            min_size = GET_SIZE(HDRP(bp));
-            min_bp = bp;
+            find_nextp = NEXT_BLKP(bp);  // 다음 탐색을 위해 업데이트
+            return bp;
         }
     }
-    return min_bp;
+    
+    // 처음부터 시작점까지 탐색
+    for (bp = heap_listp; bp < find_nextp; bp = NEXT_BLKP(bp))
+    {
+        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
+        {
+            find_nextp = NEXT_BLKP(bp);  // 다음 탐색을 위해 업데이트
+            return bp;
+        }
+    }
+    
+
+    // // Best-fit
+    // char *bp, *min_bp = NULL;
+    // size_t min_size = SIZE_MAX;
+
+    // for(bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
+    // {
+    //     if (GET_SIZE(HDRP(bp)) < min_size && !GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
+    //     {
+    //         min_size = GET_SIZE(HDRP(bp));
+    //         min_bp = bp;
+    //     }
+    // }
+    // return min_bp;
 }
 
 /*
@@ -288,6 +270,7 @@ static void place(void *bp, size_t asize)
         PUT(HDRP(bp), PACK(fsize, 1));
         PUT(FTRP(bp), PACK(fsize, 1));
     }
+    find_nextp = bp;
 }
 
 /*

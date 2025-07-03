@@ -2,7 +2,7 @@ TEAM = bovik
 VERSION = 1
 HANDINDIR = /afs/cs.cmu.edu/academic/class/15213-f01/malloclab/handin
 
-DEBUG_FLAGS = -Wall -Wextra -ggdb3 -g -DDEBUG
+DEBUG_FLAGS = -Wall -Wextra -g -DDEBUG
 # for release (제출용)
 RELEASE_FLAGS = -Wall -O2 -g
 
